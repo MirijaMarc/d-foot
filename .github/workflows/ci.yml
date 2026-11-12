@@ -1,0 +1,127 @@
+# Continuous integration. Each job only runs when its part of the repo changed.
+# No deployment yet. No secret is used: storage is always the local backend.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read # lets paths-filter list the files changed by a PR
+
+env:
+  STORAGE_BACKEND: local
+
+jobs:
+  # Decides which of the jobs below need to run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      dbt: ${{ steps.filter.outputs.dbt }}
+      web: ${{ steps.filter.outputs.web }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # The root pyproject.toml and uv.lock define the Python environment,
+          # so they trigger the Python and dbt jobs too.
+          filters: |
+            python:
+              - 'packages/**'
+              - 'dags/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            dbt:
+              - 'transform/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+            web:
+              - 'web/**'
+            infra:
+              - 'infra/**'
+
+  python:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked # fails if uv.lock is out of date with the pyproject files
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy packages
+      - run: uv run pytest
+
+  dbt:
+    needs: changes
+    if: needs.changes.outputs.dbt == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked
+      - run: uv run dbt parse
+        working-directory: transform
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # pnpm version read from "packageManager"
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm type-check
+      - run: pnpm build
+
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: docker compose config (mode 2, without proxy)
+        run: docker compose -f infra/docker-compose.yml config --quiet
+      - name: docker compose config (mode 1, with proxy)
+        run: docker compose -f infra/docker-compose.yml --profile proxy config --quiet
+      - name: nginx -t on the template rendered with dummy values
+        run: |
+          # nginx -t opens the certificate files: create a throwaway self-signed one.
+          certs="$RUNNER_TEMP/letsencrypt"
+          mkdir -p "$certs/live/example.test"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=example.test \
+            -keyout "$certs/live/example.test/privkey.pem" \
+            -out "$certs/live/example.test/fullchain.pem"
+          # The image's entrypoint renders /etc/nginx/templates/*.template with
+          # envsubst, then runs "nginx -t". Upstreams are IPs: nginx -t must
+          # resolve them and the api/web containers don't exist here.
+          docker run --rm \
+            -e DFOOT_DOMAIN=example.test \
+            -e API_UPSTREAM=127.0.0.1:8000 \
+            -e WEB_UPSTREAM=127.0.0.1:8080 \
+            -v "$PWD/infra/nginx:/etc/nginx/templates:ro" \
+            -v "$certs:/etc/letsencrypt:ro" \
+            nginx:1.30-alpine nginx -t
