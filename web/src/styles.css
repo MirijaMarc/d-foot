@@ -1,0 +1,124 @@
+/* Design tokens of the D-Foot design (dark theme) and base styles. */
+:root {
+  --bg: #0e1210; /* page background */
+  --surface: #161c19; /* cards */
+  --surface-2: #1f2a24; /* chips, active nav item */
+  --border: #26302b;
+  --border-strong: #33403a; /* inputs, axes */
+  --text: #e8eeea;
+  --text-2: #c9d3cd; /* secondary text */
+  --muted: #9aa8a0; /* captions, labels */
+  --accent: #b8f05a;
+  --accent-hover: #d6fa93;
+  --team-a: #5aa9ff; /* first team / player A (blue) */
+  --team-b: #ff9a3c; /* second team / player B (orange) */
+  --pitch: #143222;
+
+  --font-body: Inter, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+/* Page container: centred, 1200px max. */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Standard page body for inner pages (player, compare, match). */
+.page {
+  padding-top: 32px;
+  padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.breadcrumb {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.breadcrumb a {
+  color: var(--muted);
+}
+
+/* Hidden visually, still read by screen readers. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  border-radius: 50%;
+}
+
+input,
+select,
+button {
+  font: inherit;
+}
