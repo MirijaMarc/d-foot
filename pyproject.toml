@@ -1,0 +1,84 @@
+# Root of the uv workspace. This "project" is never built or published: it only
+# ties the four packages together so that `uv sync` installs all of them (in
+# editable mode) into one .venv, resolved by a single uv.lock.
+[project]
+name = "d-foot"
+version = "0.1.0"
+description = "D-Foot — football analytics"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  "dfoot-core",
+  "dfoot-ingestion",
+  "dfoot-ml",
+  "dfoot-api",
+]
+
+[tool.uv]
+package = false # the root is not an installable package
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# Resolve the dfoot-* names to the local workspace members, not PyPI.
+[tool.uv.sources]
+dfoot-core = { workspace = true }
+dfoot-ingestion = { workspace = true }
+dfoot-ml = { workspace = true }
+dfoot-api = { workspace = true }
+
+# Development-only tools, installed by `uv sync` (the "dev" group is default).
+[dependency-groups]
+dev = [
+    "boto3-stubs[s3]>=1.44.1",
+    "dbt-core>=1.12.7",
+    "dbt-duckdb>=1.11.1",
+    "httpx2>=2.16.0",
+    "mypy>=2.4.1",
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+    "sqlfluff>=4.5.0",
+]
+
+# --- ruff: linter + formatter ----------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Lets the import sorter recognise dfoot_* as first-party code.
+src = ["packages/*/src"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", # pycodestyle
+  "F",      # pyflakes
+  "I",      # import sorting
+  "UP",     # pyupgrade
+  "B",      # bugbear
+  "SIM",    # simplifications
+  "RUF",    # ruff-specific rules
+]
+
+# --- mypy: strict type checking ---------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+# --- pytest -----------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+# importlib mode: test files in different packages don't need __init__.py
+# and can't shadow each other.
+addopts = ["--import-mode=importlib"]
+
+# --- sqlfluff: SQL linter for transform/ -------------------------------------
+[tool.sqlfluff.core]
+dialect = "duckdb"
+# The jinja templater understands ref()/source() without a database
+# connection (the dbt templater would need a compiled dbt project).
+templater = "jinja"
+max_line_length = 100
+
+[tool.sqlfluff.templater.jinja]
+apply_dbt_builtins = true

@@ -1,0 +1,17 @@
+[project]
+name = "dfoot-ingestion"
+version = "0.1.0"
+description = "D-Foot: StatsBomb Open Data ingestion (bronze, silver)"
+requires-python = ">=3.12"
+dependencies = [
+    "dfoot-core",
+    "httpx>=0.28.1",
+    "tenacity>=9.2.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+dfoot-core = { workspace = true }
