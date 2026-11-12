@@ -1,0 +1,10 @@
+# dbt reads this file from the current directory (run dbt from transform/).
+# It holds no secret: the database path comes from the environment.
+dfoot:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Gold DuckDB file. Defaults to the git-ignored local data/ directory.
+      path: "{{ env_var('DUCKDB_PATH', '../data/gold/dfoot.duckdb') }}"
+      threads: 4

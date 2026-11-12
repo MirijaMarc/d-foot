@@ -1,0 +1,8 @@
+# dbt project building the gold layer (DuckDB) from the silver Parquet files.
+name: dfoot
+version: "0.1.0"
+config-version: 2
+profile: dfoot # see profiles.yml in this directory
+
+model-paths: ["models"] # staging/ -> intermediate/ -> marts/
+test-paths: ["tests"] # singular data tests (SQL)

@@ -29,6 +29,8 @@ logs/
 # --- dbt -------------------------------------------------------------------
 target/
 dbt_packages/
+# dbt's anonymous usage-tracking id
+.user.yml
 
 # --- Web -------------------------------------------------------------------
 node_modules/
