@@ -1,0 +1,40 @@
+# --- Secrets ---------------------------------------------------------------
+# Real configuration lives only in .env (never committed). Only the example is.
+.env
+.env.*
+!.env.example
+
+# --- Data (public repo: no StatsBomb data, no databases) -------------------
+# data/ is the local dev storage; only the placeholder is tracked.
+data/*
+!data/.gitkeep
+*.duckdb
+*.duckdb.wal
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- ML --------------------------------------------------------------------
+mlruns/
+mlartifacts/
+
+# --- Airflow ---------------------------------------------------------------
+logs/
+
+# --- dbt -------------------------------------------------------------------
+target/
+dbt_packages/
+
+# --- Web -------------------------------------------------------------------
+node_modules/
+dist/
+
+# --- OS / editors ----------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
