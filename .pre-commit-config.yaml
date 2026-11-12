@@ -1,0 +1,40 @@
+# Install once:  uv run pre-commit install
+# Run by hand:   uv run pre-commit run --all-files
+repos:
+  # Blocks commits containing secrets (API keys, tokens, private keys...).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Python and SQL tools run through `uv run`, so they use exactly the
+  # versions pinned in uv.lock (same as CI), not a separate copy.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run --frozen mypy packages
+        language: system
+        files: ^packages/.*\.py$
+        pass_filenames: false # type-check the whole tree: errors can span files
+      - id: pytest
+        name: pytest
+        entry: uv run --frozen pytest -q
+        language: system
+        files: ^packages/
+        pass_filenames: false
+      - id: sqlfluff
+        name: sqlfluff lint
+        entry: uv run --frozen sqlfluff lint
+        language: system
+        files: ^transform/.*\.sql$
