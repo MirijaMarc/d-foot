@@ -1,0 +1,3 @@
+# Keep the build context small; dependencies are reinstalled inside the image.
+node_modules
+dist
