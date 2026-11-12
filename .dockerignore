@@ -1,0 +1,9 @@
+# Build context of the API image (the repository root). Allowlist: everything is
+# excluded except what the image needs, so .env, data/ and .venv never leak in.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!packages/
+**/__pycache__
+**/.pytest_cache

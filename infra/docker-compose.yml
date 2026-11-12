@@ -1,0 +1,145 @@
+# D-Foot services. Run from the repository root:
+#
+#   docker compose -f infra/docker-compose.yml --env-file .env up -d                  # mode 2: host nginx
+#   docker compose -f infra/docker-compose.yml --env-file .env --profile proxy up -d  # mode 1: nginx in Docker
+#
+# Every ${VAR} below is read from .env (passed with --env-file). Each service
+# only receives the variables it needs, so for example Postgres never sees the
+# R2 keys. Defaults (${VAR:-default}) keep `docker compose config` valid without
+# a .env file (CI); secrets have no default, so a service missing one fails.
+#
+# Network exposure:
+#   - api and web publish on 127.0.0.1 only (reachable by the host's nginx);
+#   - postgres, airflow and mlflow publish nothing (SSH tunnel, see docs/deploiement.md);
+#   - only nginx (profile "proxy") listens publicly, on 80 and 443.
+
+name: dfoot
+
+# Storage settings shared by the services that run dfoot_* code (YAML anchor).
+x-dfoot-storage: &dfoot-storage
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  LOCAL_DATA_DIR: /data # path inside the containers, not the host's LOCAL_DATA_DIR
+  R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+  R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+  R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+  R2_BUCKET: ${R2_BUCKET:-}
+  DUCKDB_PATH: /data/gold/dfoot.duckdb # read by transform/profiles.yml
+
+services:
+  # Airflow's metadata database.
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow}
+    volumes:
+      - postgres-data:/var/lib/postgresql # Postgres 18+ data root
+    healthcheck:
+      # $$ escapes $ for Compose: the variable is expanded inside the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+
+  # Scheduler, DAG processor and UI in one container ("standalone"), using the
+  # LocalExecutor. The UI listens on 8080 inside the Docker network only.
+  airflow:
+    image: apache/airflow:3.4.0-python3.12
+    restart: unless-stopped
+    command: standalone
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *dfoot-storage
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-airflow}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-} # encrypts stored connections
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-} # signs API tokens
+    volumes:
+      - ../dags:/opt/airflow/dags:ro
+      - gold-data:/data/gold
+
+  # Experiment tracking. Runs metadata (SQLite) and artifacts live in one volume.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    restart: unless-stopped
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      # Host headers accepted (anti DNS-rebinding): the service name for other
+      # containers, localhost for the SSH tunnel.
+      - --allowed-hosts=mlflow,mlflow:5000,localhost:*,127.0.0.1:*
+    volumes:
+      - mlflow-data:/mlflow
+
+  api:
+    build:
+      context: .. # the uv workspace root: dfoot-api needs dfoot-core and uv.lock
+      dockerfile: packages/dfoot-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *dfoot-storage
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - gold-data:/data/gold:ro # the API only reads the gold layer
+
+  web:
+    build: ../web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:80"
+
+  # ---- Profile "proxy": only for mode 1 (nginx in Docker) -------------------
+
+  nginx:
+    image: nginx:1.30-alpine
+    profiles: [proxy]
+    restart: unless-stopped
+    depends_on: [api, web]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Substituted into templates/*.template by the image's entrypoint (envsubst).
+      DFOOT_DOMAIN: ${DFOOT_DOMAIN:-localhost}
+      API_UPSTREAM: api:8000 # container ports, on the Docker network
+      WEB_UPSTREAM: web:80
+    volumes:
+      - ./nginx:/etc/nginx/templates:ro # rendered to /etc/nginx/conf.d/d-foot.conf
+      - certbot-certs:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # Reload every 12h so renewed certificates are picked up, then start nginx
+    # through the image's entrypoint (which renders the templates).
+    command:
+      - /bin/sh
+      - -c
+      - while :; do sleep 12h; nginx -s reload; done & exec /docker-entrypoint.sh nginx -g 'daemon off;'
+
+  # Renews the Let's Encrypt certificates twice a day (no-op unless < 30 days
+  # left). First issuance is a one-off command: see docs/deploiement.md.
+  certbot:
+    image: certbot/certbot:v5.10.0
+    profiles: [proxy]
+    restart: unless-stopped
+    volumes:
+      - certbot-certs:/etc/letsencrypt
+      - certbot-www:/var/www/certbot # webroot served by nginx for the HTTP challenge
+    entrypoint:
+      - /bin/sh
+      - -c
+      - trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done
+
+volumes:
+  postgres-data:
+  gold-data: # DuckDB files of the gold layer
+  mlflow-data: # MLflow runs and artifacts
+  certbot-certs:
+  certbot-www:
